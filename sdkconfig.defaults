@@ -1,0 +1,81 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# sdkconfig.defaults – UPPÅTVIND Matter over Thread (Seeed XIAO ESP32-C6)
+# Bazuje na examples/light/sdkconfig.defaults.c6_thread z esp-matter
+# ═══════════════════════════════════════════════════════════════════════════════
+
+CONFIG_IDF_TARGET="esp32c6"
+
+# ── Pamięć flash ────────────────────────────────────────────────────────────
+CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+
+# ── FreeRTOS ────────────────────────────────────────────────────────────────
+CONFIG_FREERTOS_HZ=1000
+CONFIG_FREERTOS_UNICORE=n
+
+# ── BLE (tylko do komisjonowania – potem wyłączony) ──────────────────────────
+CONFIG_BT_ENABLED=y
+CONFIG_BT_NIMBLE_ENABLED=y
+CONFIG_BT_NIMBLE_EXT_ADV=n
+CONFIG_BT_NIMBLE_HCI_EVT_BUF_SIZE=70
+# BLE wyłącza się po komisjonowaniu (oszczędność RAM)
+CONFIG_USE_BLE_ONLY_FOR_COMMISSIONING=y
+
+# ── Wi-Fi WYŁĄCZONE (Thread-only) ────────────────────────────────────────────
+CONFIG_ENABLE_WIFI_STATION=n
+CONFIG_ENABLE_WIFI_AP=n
+
+# ── Thread / OpenThread ───────────────────────────────────────────────────────
+CONFIG_OPENTHREAD_ENABLED=y
+CONFIG_OPENTHREAD_RADIO_NATIVE=y
+# FTD (Full Thread Device) – uczestniczy w routingu sieci Thread
+CONFIG_OPENTHREAD_FTD=y
+CONFIG_OPENTHREAD_SRP_CLIENT=y
+CONFIG_OPENTHREAD_DNS_CLIENT=y
+CONFIG_OPENTHREAD_LOG_LEVEL_DYNAMIC=n
+CONFIG_OPENTHREAD_LOG_LEVEL_NOTE=y
+# CLI dostępne przez konsolę Matter (do debugowania / wgrywania dataset)
+CONFIG_OPENTHREAD_CLI=y
+
+# IEEE 802.15.4 (natywne radio ESP32-C6)
+CONFIG_IEEE802154_ENABLED=y
+
+# ── mDNS – wyłączone przy Thread (zastąpione przez SRP) ─────────────────────
+CONFIG_USE_MINIMAL_MDNS=n
+
+# ── lwIP – IPv6 wymagane przez Thread ────────────────────────────────────────
+CONFIG_LWIP_IPV6=y
+CONFIG_ESP_NETIF_TCPIP_ADAPTER_COMPATIBLE_LAYER=n
+
+# ── VFS / eventfd – wymagane przez OpenThread port ───────────────────────────
+CONFIG_VFS_SUPPORT_SELECT=y
+CONFIG_ESP_EVENTFD=y
+
+# ── Matter / CHIP ─────────────────────────────────────────────────────────────
+# Dane komisjonowania (TEST – zmień przed produkcją!)
+CONFIG_ENABLE_TEST_SETUP_PARAMS=y
+# Discriminator i PIN do parowania; domyślne wartości testowe:
+# PIN: 20202021, discriminator: 3840
+# QR code generowany automatycznie podczas startu (wyświetlany w logu)
+
+# Persystencja danych Matter w NVS
+CONFIG_ESP_MATTER_NVS_USE_DEFAULT_PARTITION=y
+
+# Komisjonowanie przez BLE (CHIP-over-BLE)
+CONFIG_ENABLE_CHIPOBLE=y
+
+# Konsola Matter (chip> ) przez USB UART – do debugowania i OT CLI
+CONFIG_ESP_MATTER_CONSOLE_TASK_STACK=4096
+CONFIG_ENABLE_CHIP_SHELL=y
+
+# ── Rozmiary stosów zadań ─────────────────────────────────────────────────────
+CONFIG_CHIP_TASK_STACK_SIZE=8192
+CONFIG_OPENTHREAD_STACK_SIZE=8192
+
+# ── Logowanie ─────────────────────────────────────────────────────────────────
+CONFIG_LOG_DEFAULT_LEVEL_INFO=y
+CONFIG_LOG_MAXIMUM_LEVEL_DEBUG=y
+
+# ── NVS ──────────────────────────────────────────────────────────────────────
+CONFIG_NVS_ENCRYPTION=n
