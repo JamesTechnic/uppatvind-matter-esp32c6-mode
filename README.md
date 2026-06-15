@@ -1,6 +1,10 @@
 # IKEA UPPÅTVIND → Matter over Thread
 ### Seeed XIAO ESP32-C6 + esp-matter SDK + ESP-IDF v5.5.4
 
+Zamienia oczyszczacz powietrza IKEA UPPÅTVIND w natywne urządzenie Matter over Thread,
+sterowane bezpośrednio z aplikacji **IKEA Home Smart** przez **IKEA Dirigera** jako Thread border router.
+Bez Home Assistant, bez chmury, bez Wi-Fi.
+
 ---
 
 ## Schemat podłączenia
@@ -9,220 +13,171 @@
 XIAO ESP32-C6          UPPÅTVIND PCB
 ─────────────          ─────────────
 GPIO4 (OD) ──────────► TP4  (przycisk, active-low)
-GPIO5 (IN) ◄────────── TP7  (LED PWM: ~0/20/100/320 µs)
+GPIO5 (IN) ◄────────── TP7  (LED PWM sygnał stanu)
 GND        ────────── GND
 5V (VBUS)  ◄── 1N5819 ── TP3 (5V z UPPÅTVIND)
 ```
 
-**GPIO4** = open-drain output, pull-up wewnętrzny. Puls 100ms low = jedno kliknięcie.  
-**GPIO5** = input z pull-down. Szerokość impulsu PWM → tryb: 0µs=Off, ~20=Low, ~100=Med, ~320=High.
+**GPIO4** = open-drain output + pull-up. Puls 100ms low = jedno kliknięcie przycisku.
+**GPIO5** = input z pull-down. Szerokość impulsu PWM → tryb pracy:
+
+| Szerokość impulsu | Tryb     |
+|-------------------|----------|
+| < 10 µs           | Off      |
+| 10–60 µs          | Low      |
+| 60–210 µs         | Medium   |
+| > 210 µs          | High     |
+
+Referencja sprzętowa: https://github.com/jonathonlui/esphome-ikea-uppatvind
 
 ---
 
-## 1. Instalacja zależności systemowych (Debian/Raspberry Pi OS arm64)
+## Architektura oprogramowania
+
+- **Device type**: Air Purifier (Matter 0x002D) – `endpoint::air_purifier::create()`
+- **Cluster**: FanControl (0x0202), FanModeSequence=3 (Off/Low/Med/High)
+- **Transport**: Thread only (IEEE 802.15.4, natywne radio ESP32-C6)
+- **Komisjonowanie**: BLE → QR kod → IKEA Home Smart
+- **Synchronizacja stanu**: polling GPIO5 co 200ms; zmiany fizyczne (przyciski na obudowie) automatycznie aktualizują stan Matter
+
+---
+
+## Instalacja krok po kroku
+
+### 1. Narzędzia systemowe (Debian/Raspberry Pi OS arm64)
 
 ```bash
-sudo apt update
-sudo apt install -y \
+sudo apt update && sudo apt install -y \
     git wget curl flex bison gperf \
     python3 python3-pip python3-venv python3-dev \
     cmake ninja-build ccache \
     libffi-dev libssl-dev libusb-1.0-0-dev \
     dfu-util pkg-config zlib1g-dev \
-    libglib2.0-dev libdbus-1-dev \
-    screen picocom
+    libglib2.0-dev libdbus-1-dev
 ```
 
----
-
-## 2. Instalacja ESP-IDF v5.5.4
+### 2. ESP-IDF v5.5.4
 
 ```bash
 mkdir -p ~/esp && cd ~/esp
-
 git clone --recursive https://github.com/espressif/esp-idf.git
 cd esp-idf
 git checkout v5.5.4
 git submodule update --init --recursive
-
-# Instalacja toolchaina dla RISC-V (ESP32-C6)
 ./install.sh esp32c6
-
 cd ~
 ```
 
-> ⚠️ Na Raspberry Pi (arm64) instalacja może potrwać 20–30 minut (kompilacja toolchaina ze źródeł).
+> ⚠️ Na Raspberry Pi zajmuje ~20–30 minut.
 
----
-
-## 3. Instalacja esp-matter SDK (branch main)
+### 3. esp-matter SDK (branch main)
 
 ```bash
 cd ~/esp
-
-# Shallow clone – znacznie szybszy
 git clone --depth 1 https://github.com/espressif/esp-matter.git
 cd esp-matter
 git submodule update --init --depth 1
-
-# Submoduły connectedhomeip dla esp32 (tylko niezbędne platformy)
 cd ./connectedhomeip/connectedhomeip
 ./scripts/checkout_submodules.py --platform esp32 linux --shallow
 cd ../..
-
-# Instalacja narzędzi Matter (ZAP, chip-cert, chip-tool…)
 ./install.sh
 cd ~
 ```
 
----
-
-## 4. Konfiguracja środowiska (każda nowa sesja terminala)
+### 4. Aktywacja środowiska (każda nowa sesja)
 
 ```bash
 source ~/esp/esp-idf/export.sh
 source ~/esp/esp-matter/export.sh
-
 export ESP_MATTER_PATH=~/esp/esp-matter
 ```
 
-> 💡 Warto dodać powyższe do `~/.bashrc` lub osobnego skryptu `~/esp/activate.sh`.
-
----
-
-## 5. Klonowanie / przygotowanie projektu
+### 5. Klonowanie projektu
 
 ```bash
-git clone https://github.com/JamesTechnic/uppatvind-matter-esp32c6-mode
-# lub skopiuj katalog projektu
-cd uppatvind-matter
+git clone https://github.com/JamesTechnic/uppatvind-matter-esp32c6-mode.git
+cd uppatvind-matter-esp32c6-mode
 ```
 
----
-
-## 6. Build
+### 6. Build
 
 ```bash
-cd ~/uppatvind-matter
-
-# Wyczyść poprzedni build (ważne przy zmianie sdkconfig)
 idf.py fullclean
-
-# Ustaw target + załaduj sdkconfig.defaults (Thread build)
 idf.py -DSDKCONFIG_DEFAULTS="sdkconfig.defaults" set-target esp32c6
-
-# Kompilacja (na RPi ~30-60 minut przy pierwszym buildzie)
 idf.py build
 ```
 
----
+> Pierwszy build na RPi: ~30–60 minut.
 
-## 7. Flash przez USB
-
-XIAO ESP32-C6 pojawia się jako `/dev/ttyACM0` lub `/dev/ttyUSB0`.
+### 7. Flash
 
 ```bash
-# Sprawdź port
+# Sprawdź port (zwykle /dev/ttyACM0)
 ls /dev/tty{ACM,USB}*
 
-# Opcjonalnie: wymaż flash przy pierwszym wgraniu
+# Pierwszy raz: wymaż flash
 idf.py -p /dev/ttyACM0 erase_flash
 
-# Flash + monitor
+# Wgraj i otwórz monitor
 idf.py -p /dev/ttyACM0 flash monitor
 ```
 
-Przy pierwszym uruchomieniu w logu zobaczysz:
+---
+
+## Komisjonowanie (parowanie z IKEA Home Smart)
+
+Po uruchomieniu urządzenia w logu pojawi się:
+
 ```
-I (XXXX) chip[DL]: BLE advertising started
-I (XXXX) uppatvind: Fan endpoint ID: 1
-I (XXXX) chip[SVR]: SetupQRCode: [MT:...]
+I (XXXX) chip[SVR]: SetupQRCode: [MT:XXXXXXXXXX]
 I (XXXX) chip[SVR]: ManualPairingCode: [XXXXXXXXXX]
 ```
 
----
+A nad tym wydrukowany w ASCII art **QR kod**.
 
-## 8. Pobranie Thread Dataset z IKEA Dirigera i wgranie do urządzenia
+1. Otwórz aplikację **IKEA Home Smart**
+2. Dodaj nowe urządzenie → **Skanuj QR kod**
+3. Zeskanuj QR kod z ekranu monitora (lub wpisz ManualPairingCode)
+4. Aplikacja automatycznie skonfiguruje Thread przez Dirigerę i sparuje urządzenie
+5. W aplikacji pojawi się oczyszczacz powietrza z trybami: **Off / Low / Medium / High**
 
-### A) Pobierz aktywny dataset z Dirigera
-
-**Przez Home Assistant (jeśli masz):**
-```bash
-# W HA Developer Tools → Services → openthread_border_router.get_dataset
-# Lub przez terminal HA:
-ha openthread get-active-dataset
-```
-
-**Przez SSH do Dirigera (jeśli masz dostęp):**
-```bash
-ssh root@<dirigera-ip>
-# Dirigera używa ot-ctl / otnctl
-ot-ctl dataset active -x
-# Wynik: hex string, np. 0e080000000000010000...
-```
-
-**Przez aplikację IKEA Home Smart:**  
-Dirigera wyświetla Thread network name w ustawieniach → "Połącz z siecią Thread".  
-Aktywny dataset hex można też odczytać przez API Dirigera (port 8443):
-```bash
-curl -k -H "Authorization: Bearer <token>" \
-  https://<dirigera-ip>:8443/v1/openthread/dataset
-```
-
-### B) Wgraj dataset do urządzenia przez konsolę Matter
-
-Po uruchomieniu urządzenia (monitor aktywny):
-
-```
-# W konsoli szeregowej (chip> prompt):
-matter esp ot_cli dataset set active <HEX_DATASET>
-
-# Przykład:
-matter esp ot_cli dataset set active 0e080000000000010000000300001235060004001fffe00208dead00beef00cafe0708fddead00beef00010610112233445566778899aabbccddeeff030f4f70656e5468726561642d455350010212340410445f2b5ca6f2a93a55ce570a70eee1570c0402a0f7f8
-
-# Zapisz i aktywuj:
-matter esp ot_cli dataset commit active
-matter esp ot_cli ifconfig up
-matter esp ot_cli thread start
-```
-
-### C) Komisjonowanie przez aplikację IKEA Home Smart
-
-1. Otwórz **IKEA Home Smart** → Dodaj urządzenie
-2. Zeskanuj QR kod z loga (lub wpisz Manual Pairing Code)
-3. Aplikacja skojarzy urządzenie z Dirigerą jako Thread border router
-4. W aplikacji pojawi się wentylator z trybami: Off / Low / Medium / High
+> ℹ️ Nie musisz ręcznie wpisywać żadnych danych Thread. Aplikacja IKEA Home Smart
+> pobiera Thread dataset z Dirigery i przekazuje go do urządzenia automatycznie
+> podczas procesu komisjonowania (BLE → Thread handoff).
 
 ---
 
-## 9. Weryfikacja Thread network
+## Weryfikacja połączenia Thread (opcjonalnie)
 
-W konsoli urządzenia:
+Po komisjonowaniu możesz sprawdzić stan sieci Thread przez monitor szeregowy:
+
 ```
-matter esp ot_cli state        # Router / Child / Leader
-matter esp ot_cli ipaddr       # Adresy IPv6
-matter esp ot_cli neighbor table  # Sąsiedzi Thread (Dirigera)
-matter esp ot_cli ping <ipv6>  # Test łączności
+matter esp ot_cli state          # Router / Child / Leader
+matter esp ot_cli ipaddr         # Adresy IPv6 urządzenia
+matter esp ot_cli neighbor table # Sąsiedzi w sieci Thread (Dirigera)
 ```
 
 ---
 
-## 10. Troubleshooting
+## FAQ
 
-| Problem | Rozwiązanie |
-|---------|------------|
-| `ABORT: Failed to create fan endpoint` | Sprawdź wersję esp-matter – `endpoint::fan` musi być dostępny |
-| Urządzenie nie pojawia się w IKEA app | Sprawdź czy dataset Thread pasuje do Dirigery (`ot_cli dataset active`) |
-| `OOM` / crash podczas BLE | Zwiększ `CONFIG_BT_NIMBLE_MEM_ALLOC_MODE_EXTERNAL` lub ogranicz inne taski |
-| GPIO5 zawsze zwraca 0 | Sprawdź progowe wartości PWM – zmierz oscyloskopem TP7 |
-| Przycisk nie reaguje | Sprawdź open-drain + pull-up na GPIO4; mierz napięcie na TP4 |
-| Build error: `fan::create` not found | Upewnij się że `esp-matter` jest na branch `main`, nie `release` |
+**Czy muszę podpiąć czerwoną diodę filtra?**
+Nie. Czerwona dioda sygnalizuje zużycie filtra – to opcjonalny cluster
+`HepaFilterMonitoring` (planowany jako v2). Urządzenie działa w pełni bez tego.
+
+**Fizyczne przyciski na UPPÅTVIND przestaną działać?**
+Nie – firmware polluje stan GPIO5 co 200ms i synchronizuje zmiany fizyczne
+z Matter, więc przyciski na obudowie działają normalnie i aktualizują stan
+w aplikacji IKEA.
+
+**Dlaczego Thread a nie Wi-Fi?**
+Dirigera jest Thread border routerem. Komunikacja Thread jest lokalna,
+szyfrowana, nie wymaga chmury i działa bez internetu.
 
 ---
 
-## Uwagi projektowe
+## Roadmap (v2)
 
-- **Brak air_purifier example** w esp-matter – używamy `endpoint::fan::create()` który zawiera identyczny FanControl cluster (0x0202). Device type ID można zmienić ręcznie jeśli IKEA wymaga `0x002D` (Air Purifier) zamiast `0x002B` (Fan).
-- **FanModeSequence = 3** → Off/Low/Med/High (bez Auto), co odpowiada fizycznym trybom UPPÅTVIND.
-- **Komisjonowanie BLE** jest wymagane przy pierwszym parze; po komisjonowaniu BLE jest wyłączane (`USE_BLE_ONLY_FOR_COMMISSIONING=y`) oszczędzając RAM i moc.
-- **OTA** jest przygotowane przez tablicę partycji z `ota_0`/`ota_1` – aktualizacje przez `idf.py ota` lub Matter OTA cluster.
+- [ ] `HepaFilterMonitoring` cluster – odczyt czerwonej diody filtra (GPIO dodatkowy)
+- [ ] OTA przez Matter OTA cluster
+- [ ] Kalibracja progów PWM przez NVS (bez rekompilacji)
