@@ -93,7 +93,7 @@ export ESP_MATTER_PATH=~/esp/esp-matter
 ## 5. Klonowanie / przygotowanie projektu
 
 ```bash
-git clone https://github.com/TWOJ_USER/uppatvind-matter.git
+git clone https://github.com/JamesTechnic/uppatvind-matter-esp32c6-mode
 # lub skopiuj katalog projektu
 cd uppatvind-matter
 ```
