@@ -1,5 +1,5 @@
 # IKEA UPPÅTVIND → Matter over Thread
-### Seeed XIAO ESP32-C6 + esp-matter SDK + ESP-IDF v5.5.4
+### Seeed XIAO ESP32-C6 + esp-matter SDK + ESP-IDF v5.5
 
 Zamienia oczyszczacz powietrza IKEA UPPÅTVIND w natywne urządzenie Matter over Thread,
 sterowane bezpośrednio z aplikacji **IKEA Home Smart** przez **IKEA Dirigera** jako Thread border router.
@@ -56,13 +56,13 @@ sudo apt update && sudo apt install -y \
     libglib2.0-dev libdbus-1-dev
 ```
 
-### 2. ESP-IDF v5.5.4
+### 2. ESP-IDF v5.5
 
 ```bash
 mkdir -p ~/esp && cd ~/esp
 git clone --recursive https://github.com/espressif/esp-idf.git
 cd esp-idf
-git checkout v5.5.4
+git checkout v5.5
 git submodule update --init --recursive
 ./install.sh esp32c6
 cd ~
