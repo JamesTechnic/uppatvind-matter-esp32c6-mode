@@ -36,7 +36,7 @@ jobs:
         if: failure()
         run: |
           [ -f build.log ] || exit 0
-          MSG=$(grep -n -E "error:|CMake Error|FAILED:|fatal error|undefined reference|ninja: build stopped|Failed to|not found" -A4 build.log | head -80 | sed -e 's/%/%25/g' -e 's/\r//g' | sed -e ':a;N;$!ba;s/\n/%0A/g')
+          MSG=$(grep -n -E "error:|CMake Error|undefined reference|ninja: build stopped" -A3 build.log | grep -v "riscv32-esp-elf-g" | cut -c1-300 | head -70 | sed -e 's/%/%25/g' -e 's/\r//g' | sed -e ':a;N;$!ba;s/\n/%0A/g')
           echo "::error title=Build errors::${MSG}"
           echo "--- last 40 lines ---"; tail -40 build.log
 
