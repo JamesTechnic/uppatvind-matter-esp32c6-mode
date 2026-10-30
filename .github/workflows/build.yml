@@ -28,7 +28,7 @@ jobs:
         run: |
           docker run --rm -v "$PWD":/project -w /project \
             espressif/esp-matter:release-v1.6 \
-            bash -c "set -o pipefail; idf.py set-target esp32c6 2>&1 | tee /project/build.log && idf.py build 2>&1 | tee -a /project/build.log"
+            bash -c "cd /project && set -o pipefail && echo \"::notice title=Toolchain::IDF \$(cat /opt/espressif/esp-idf-commit.txt 2>/dev/null) \$(idf.py --version 2>&1 | tail -1), esp-matter \$(cat /opt/espressif/esp-matter-commit.txt 2>/dev/null), connectedhomeip \$(cat /opt/espressif/connectedhomeip-commit.txt 2>/dev/null)\" && idf.py set-target esp32c6 2>&1 | tee /project/build.log && idf.py build 2>&1 | tee -a /project/build.log"
 
       # Przy błędzie wypisz linie z błędami jako adnotację (widoczną na stronie
       # runa i w API), żeby nie trzeba było przeklejać całego logu.
