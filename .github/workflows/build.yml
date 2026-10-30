@@ -28,7 +28,17 @@ jobs:
         run: |
           docker run --rm -v "$PWD":/project -w /project \
             espressif/esp-matter:release-v1.6 \
-            bash -c "idf.py set-target esp32c6 && idf.py build"
+            bash -c "set -o pipefail; idf.py set-target esp32c6 2>&1 | tee /project/build.log && idf.py build 2>&1 | tee -a /project/build.log"
+
+      # Przy błędzie wypisz linie z błędami jako adnotację (widoczną na stronie
+      # runa i w API), żeby nie trzeba było przeklejać całego logu.
+      - name: Report build errors
+        if: failure()
+        run: |
+          [ -f build.log ] || exit 0
+          MSG=$(grep -n -E "error:|CMake Error|FAILED:|fatal error|undefined reference|ninja: build stopped|Failed to|not found" -A4 build.log | head -80 | sed -e 's/%/%25/g' -e 's/\r//g' | sed -e ':a;N;$!ba;s/\n/%0A/g')
+          echo "::error title=Build errors::${MSG}"
+          echo "--- last 40 lines ---"; tail -40 build.log
 
       - name: Collect firmware files
         if: success()
