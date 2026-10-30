@@ -1,0 +1,47 @@
+name: Build firmware
+
+# Buduje projekt dla ESP32-C6 na oficjalnym obrazie Espressif
+# (ESP-IDF v6.0.2 + esp-matter release/v1.6). Nie używa żadnych sekretów.
+on:
+  push:
+    branches: [main, fix/build-and-thread-start]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      # Obraz z IDF + esp-matter jest duży – zwalniamy miejsce na runnerze.
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android "$AGENT_TOOLSDIRECTORY"
+          df -h /
+
+      - name: Build (esp32c6)
+        run: |
+          docker run --rm -v "$PWD":/project -w /project \
+            espressif/esp-matter:release-v1.6 \
+            bash -c "idf.py set-target esp32c6 && idf.py build"
+
+      - name: Collect firmware files
+        if: success()
+        run: |
+          mkdir -p out
+          cp build/uppatvind_matter.bin build/flasher_args.json out/
+          cp build/bootloader/bootloader.bin out/
+          cp build/partition_table/partition-table.bin out/
+          [ -f build/ota_data_initial.bin ] && cp build/ota_data_initial.bin out/ || true
+          ls -la out
+
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: uppatvind-esp32c6-firmware
+          path: out/
