@@ -1,12 +1,11 @@
+# Jak w przykładzie esp-matter (examples/light): bez jawnego REQUIRES komponent
+# "main" widzi wszystkie komponenty (chip, openthread, esp_matter_console, ...).
+# Wcześniejsza lista PRIV_REQUIRES gubiła część z nich.
 idf_component_register(
     SRCS
         "app_main.cpp"
-    INCLUDE_DIRS
+    PRIV_INCLUDE_DIRS
         "."
-    PRIV_REQUIRES
-        nvs_flash
-        esp_matter
-        esp_matter_console
-        driver
-        esp_timer
 )
+
+target_compile_options(${COMPONENT_LIB} PRIVATE "-DCHIP_HAVE_CONFIG_H")

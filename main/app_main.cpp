@@ -6,7 +6,7 @@
  * GPIO5 ← TP7 : odczyt LED PWM – szerokość impulsu HIGH określa tryb
  *
  * Device type : Air Purifier (Matter 0x002D)
- * Cluster     : FanControl (0x0202), FanModeSequence=3 → Off/Low/Med/High
+ * Cluster     : FanControl (0x0202), FanModeSequence=0 → Off/Low/Med/High
  *
  * WAŻNE: Wartości progów PWM (THRESH_*) są wstępne i MUSZĄ być
  * skalibrowane po zmierzeniu rzeczywistych impulsów na TP7.
@@ -16,18 +16,33 @@
 #include <esp_err.h>
 #include <esp_log.h>
 #include <esp_timer.h>          // esp_timer_get_time() – wymagany jawny include
+#include <esp_rom_sys.h>        // esp_rom_delay_us()
 #include <nvs_flash.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 #include <driver/gpio.h>
-#include <esp_matter.h>
-#include <esp_matter_endpoint.h>
-#include <esp_matter_cluster.h>
-#include <esp_matter_attribute_utils.h>
+#include <esp_matter.h>         // dociąga endpoint/cluster/attribute
+#include <esp_matter_console.h>
 #include <app-common/zap-generated/ids/Clusters.h>
 #include <app-common/zap-generated/ids/Attributes.h>
 
+#if CHIP_DEVICE_CONFIG_ENABLE_THREAD
+#include <platform/ESP32/OpenthreadLauncher.h>
+#endif
+
 static const char *TAG = "uppatvind";
+
+// Makro z examples/common/utils/common_macros.h (esp-matter) – tutaj własna
+// kopia, żeby projekt nie zależał od katalogu examples.
+#ifndef ABORT_APP_ON_FAILURE
+#define ABORT_APP_ON_FAILURE(x, ...) do {          \
+        if (!(x)) {                                \
+            __VA_ARGS__;                           \
+            vTaskDelay(pdMS_TO_TICKS(5000));       \
+            abort();                               \
+        }                                          \
+    } while (0)
+#endif
 
 // ─── Kalibracja PWM ──────────────────────────────────────────────────────────
 // Ustaw na 1 podczas pierwszego uruchomienia – wypisuje surowe µs do logu.
@@ -124,7 +139,11 @@ static void set_matter_fan_mode_cb(intptr_t arg)
     attribute_t *attr = attribute::get(cl, FanControl::Attributes::FanMode::Id);
     if (!attr) return;
     esp_matter_attr_val_t val = esp_matter_uint8((uint8_t)mode);
-    attribute::set_val(attr, &val);
+    // attribute::update() (a nie set_val) zapisuje wartość i RAPORTUJE ją do
+    // kontrolera – dzięki temu zmiana z fizycznego przycisku trafia do aplikacji.
+    // Wywołanie jest bezpieczne: jesteśmy w callbacku ScheduleWork (wątek Matter).
+    attribute::update(g_fan_endpoint_id, FanControl::Id,
+                      FanControl::Attributes::FanMode::Id, &val);
 }
 
 // ─── Task: polling fizycznego stanu UPPÅTVIND ────────────────────────────────
@@ -174,6 +193,11 @@ static esp_err_t app_attribute_update_cb(
     if (endpoint_id != g_fan_endpoint_id) return ESP_OK;
 
     if (attribute_id == FanControl::Attributes::FanMode::Id) {
+        // Sprzęt ma tylko Off/Low/Medium/High (FanModeSequence 0).
+        if (val->val.u8 > (uint8_t)FanMode::kHigh) {
+            ESP_LOGW(TAG, "Nieobsługiwany tryb wentylatora: %d", (int)val->val.u8);
+            return ESP_ERR_INVALID_ARG;
+        }
         FanMode requested = (FanMode)val->val.u8;
 
         // Łamanie pętli sprzężenia zwrotnego:
@@ -206,13 +230,40 @@ static esp_err_t app_attribute_update_cb(
                 vTaskDelete(nullptr);
             },
             "btn_cycle",
-            2048,
+            3072,
             (void *)(intptr_t)requested,
             5,
             nullptr
         );
     }
     return ESP_OK;
+}
+
+// ─── Callback zdarzeń Matter/CHIP (podawany do esp_matter::start) ─────────────
+static void app_event_cb(const chip::DeviceLayer::ChipDeviceEvent *event, intptr_t arg)
+{
+    switch (event->Type) {
+    case chip::DeviceLayer::DeviceEventType::kCommissioningComplete:
+        ESP_LOGI(TAG, "Komisjonowanie zakończone");
+        break;
+    case chip::DeviceLayer::DeviceEventType::kFailSafeTimerExpired:
+        ESP_LOGW(TAG, "Komisjonowanie nieudane – fail-safe timer wygasł");
+        break;
+    case chip::DeviceLayer::DeviceEventType::kCommissioningSessionStarted:
+        ESP_LOGI(TAG, "Sesja komisjonowania rozpoczęta");
+        break;
+    case chip::DeviceLayer::DeviceEventType::kCommissioningSessionStopped:
+        ESP_LOGI(TAG, "Sesja komisjonowania zakończona");
+        break;
+    case chip::DeviceLayer::DeviceEventType::kFabricRemoved:
+        ESP_LOGI(TAG, "Fabric usunięty");
+        break;
+    case chip::DeviceLayer::DeviceEventType::kThreadStateChange:
+        ESP_LOGI(TAG, "Zmiana stanu sieci Thread");
+        break;
+    default:
+        break;
+    }
 }
 
 // ─── Callback identyfikacji ──────────────────────────────────────────────────
@@ -266,8 +317,6 @@ extern "C" void app_main(void)
 
     gpio_init();
 
-    // esp_matter::start() inicjalizuje OpenThread automatycznie
-    // na podstawie sdkconfig (CONFIG_OPENTHREAD_ENABLED=y).
     node::config_t node_config;
     node_t *node = node::create(
         &node_config, app_attribute_update_cb, app_identification_cb);
@@ -276,7 +325,8 @@ extern "C" void app_main(void)
 
     // Air Purifier (0x002D) – natywnie obsługiwany przez IKEA Dirigera
     endpoint::air_purifier::config_t ap_config;
-    ap_config.fan_control.fan_mode_sequence = 3; // Off/Low/Med/High
+    // FanModeSequenceEnum: 0 = Off/Low/Med/High (3 = Off/Low/High/Auto – to NIE to samo!)
+    ap_config.fan_control.fan_mode_sequence = 0;
     ap_config.fan_control.fan_mode          = 0; // domyślnie Off
 
     endpoint_t *ap_ep = endpoint::air_purifier::create(
@@ -287,7 +337,21 @@ extern "C" void app_main(void)
     g_fan_endpoint_id = endpoint::get_id(ap_ep);
     ESP_LOGI(TAG, "Air Purifier endpoint ID: %d", g_fan_endpoint_id);
 
-    err = esp_matter::start(app_attribute_update_cb);
+#if CHIP_DEVICE_CONFIG_ENABLE_THREAD
+    // WYMAGANE: esp_matter::start() NIE konfiguruje radia/OpenThread samo.
+    // Bez tego stos Thread nie wystartuje i komisjonowanie nigdy nie dojdzie
+    // do sieci Thread. Musi być wywołane PRZED esp_matter::start().
+    esp_openthread_platform_config_t ot_config = {
+        .radio_config = ESP_OPENTHREAD_DEFAULT_RADIO_CONFIG(),
+        .host_config  = ESP_OPENTHREAD_DEFAULT_HOST_CONFIG(),
+        .port_config  = ESP_OPENTHREAD_DEFAULT_PORT_CONFIG(),
+    };
+    set_openthread_platform_config(&ot_config);
+#endif
+
+    // Uwaga: start() przyjmuje callback ZDARZEŃ (app_event_cb), a nie callback
+    // atrybutów – ten ostatni został już podany w node::create().
+    err = esp_matter::start(app_event_cb);
     ABORT_APP_ON_FAILURE(err == ESP_OK,
         ESP_LOGE(TAG, "esp_matter::start() failed: %s", esp_err_to_name(err)));
 
@@ -295,4 +359,16 @@ extern "C" void app_main(void)
 
     // Priorytet 1 – nie głodzi Thread/Matter (busy-wait w read_pwm_pulse_us)
     xTaskCreate(physical_state_task, "phys_state", 4096, nullptr, 1, nullptr);
+
+#if CONFIG_ENABLE_CHIP_SHELL
+    // Konsola szeregowa: polecenia "matter esp ot_cli ..." z README działają
+    // dopiero po zarejestrowaniu i uruchomieniu konsoli.
+    esp_matter::console::diagnostics_register_commands();
+    esp_matter::console::factoryreset_register_commands();
+    esp_matter::console::attribute_register_commands();
+#if CONFIG_OPENTHREAD_CLI
+    esp_matter::console::otcli_register_commands();
+#endif
+    esp_matter::console::init();
+#endif
 }

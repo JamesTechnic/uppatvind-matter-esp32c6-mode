@@ -35,7 +35,7 @@ Referencja sprzętowa: https://github.com/jonathonlui/esphome-ikea-uppatvind
 ## Architektura oprogramowania
 
 - **Device type**: Air Purifier (Matter 0x002D) – `endpoint::air_purifier::create()`
-- **Cluster**: FanControl (0x0202), FanModeSequence=3 (Off/Low/Med/High)
+- **Cluster**: FanControl (0x0202), FanModeSequence=0 (Off/Low/Med/High)
 - **Transport**: Thread only (IEEE 802.15.4, natywne radio ESP32-C6)
 - **Komisjonowanie**: BLE → QR kod → IKEA Home Smart
 - **Synchronizacja stanu**: polling GPIO5 co 200ms; zmiany fizyczne (przyciski na obudowie) automatycznie aktualizują stan Matter
