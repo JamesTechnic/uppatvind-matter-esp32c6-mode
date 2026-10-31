@@ -19,12 +19,30 @@ CONFIG_BT_ENABLED=y
 CONFIG_BT_NIMBLE_ENABLED=y
 CONFIG_BT_NIMBLE_EXT_ADV=n
 CONFIG_BT_NIMBLE_HCI_EVT_BUF_SIZE=70
-# BLE wyłącza się po komisjonowaniu (oszczędność RAM)
-CONFIG_USE_BLE_ONLY_FOR_COMMISSIONING=y
+# BLE zostaje aktywne (jak w examples/light dla C6 Thread). Przy =y BLE jest
+# zwalniane po komisjonowaniu i po usunięciu urządzenia z ekosystemu nie da się
+# go sparować ponownie bez restartu.
+CONFIG_USE_BLE_ONLY_FOR_COMMISSIONING=n
+
+# libsodium (jak w przykładzie esp-matter)
+CONFIG_LIBSODIUM_USE_MBEDTLS_SHA=y
+
+# HKDF w mbedTLS – WYMAGANE przez Matter (CHIPCryptoPALmbedTLS). Bez tego
+# linkowanie kończy się: undefined reference to `mbedtls_hkdf'.
+CONFIG_MBEDTLS_HKDF_C=y
+
+# Tablica partycji leży pod 0xC000 (a nie domyślnym 0x8000), bo partitions.csv
+# (jak w examples/light) zaczyna się od esp_secure_cert pod 0xD000, a większy
+# bootloader potrzebuje miejsca.
+CONFIG_PARTITION_TABLE_OFFSET=0xC000
+
+# BLE: bez ponawiania połączeń (jak w przykładzie)
+CONFIG_BT_NIMBLE_ENABLE_CONN_REATTEMPT=n
 
 # ── Wi-Fi WYŁĄCZONE (Thread-only) ────────────────────────────────────────────
 CONFIG_ENABLE_WIFI_STATION=n
 CONFIG_ENABLE_WIFI_AP=n
+CONFIG_ESP_WIFI_SOFTAP_SUPPORT=n
 
 # ── Thread / OpenThread ───────────────────────────────────────────────────────
 CONFIG_OPENTHREAD_ENABLED=y
@@ -43,10 +61,15 @@ CONFIG_IEEE802154_ENABLED=y
 
 # ── mDNS – wyłączone przy Thread (zastąpione przez SRP) ─────────────────────
 CONFIG_USE_MINIMAL_MDNS=n
+CONFIG_ENABLE_EXTENDED_DISCOVERY=y
 
-# ── lwIP – IPv6 wymagane przez Thread ────────────────────────────────────────
+# ── lwIP – IPv6 pod OpenThread (jak w sdkconfig.defaults.c6_thread z esp-matter)
 CONFIG_LWIP_IPV6=y
-CONFIG_ESP_NETIF_TCPIP_ADAPTER_COMPATIBLE_LAYER=n
+CONFIG_LWIP_IPV6_AUTOCONFIG=n
+CONFIG_LWIP_IPV6_NUM_ADDRESSES=8
+CONFIG_LWIP_MULTICAST_PING=y
+CONFIG_LWIP_HOOK_IP6_ROUTE_DEFAULT=y
+CONFIG_LWIP_HOOK_ND6_GET_GW_DEFAULT=y
 
 # ── VFS / eventfd – wymagane przez OpenThread port ───────────────────────────
 CONFIG_VFS_SUPPORT_SELECT=y
@@ -59,14 +82,13 @@ CONFIG_ENABLE_TEST_SETUP_PARAMS=y
 # PIN: 20202021, discriminator: 3840
 # QR code generowany automatycznie podczas startu (wyświetlany w logu)
 
-# Persystencja danych Matter w NVS
-CONFIG_ESP_MATTER_NVS_USE_DEFAULT_PARTITION=y
-
 # Komisjonowanie przez BLE (CHIP-over-BLE)
 CONFIG_ENABLE_CHIPOBLE=y
 
-# Konsola Matter (chip> ) przez USB UART – do debugowania i OT CLI
-CONFIG_ESP_MATTER_CONSOLE_TASK_STACK=4096
+# Aktualizacje OTA przez Matter (partycje ota_0/ota_1 są w partitions.csv)
+CONFIG_ENABLE_OTA_REQUESTOR=y
+
+# Konsola Matter przez USB – do debugowania i OT CLI (rejestrowana w app_main)
 CONFIG_ENABLE_CHIP_SHELL=y
 
 # ── Rozmiary stosów zadań ─────────────────────────────────────────────────────
@@ -74,8 +96,9 @@ CONFIG_CHIP_TASK_STACK_SIZE=8192
 CONFIG_OPENTHREAD_STACK_SIZE=8192
 
 # ── Logowanie ─────────────────────────────────────────────────────────────────
+# Bez LOG_MAXIMUM_LEVEL_DEBUG: wkompilowuje wszystkie logi debug i powiększa
+# firmware (partycja aplikacji ma tylko 1,9 MB).
 CONFIG_LOG_DEFAULT_LEVEL_INFO=y
-CONFIG_LOG_MAXIMUM_LEVEL_DEBUG=y
 
 # ── NVS ──────────────────────────────────────────────────────────────────────
 CONFIG_NVS_ENCRYPTION=n
