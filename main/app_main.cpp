@@ -27,7 +27,25 @@
 #include <app-common/zap-generated/ids/Attributes.h>
 
 #if CHIP_DEVICE_CONFIG_ENABLE_THREAD
+#include <esp_openthread_types.h>
 #include <platform/ESP32/OpenthreadLauncher.h>
+
+// ESP-IDF NIE dostarcza tych makr – każdy przykład esp-matter definiuje je sam
+// (patrz examples/light/main/app_priv.h). Radio natywne = 802.15.4 w ESP32-C6.
+#define ESP_OPENTHREAD_DEFAULT_RADIO_CONFIG()                                           \
+    {                                                                                   \
+        .radio_mode = RADIO_MODE_NATIVE,                                                \
+    }
+
+#define ESP_OPENTHREAD_DEFAULT_HOST_CONFIG()                                            \
+    {                                                                                   \
+        .host_connection_mode = HOST_CONNECTION_MODE_NONE,                              \
+    }
+
+#define ESP_OPENTHREAD_DEFAULT_PORT_CONFIG()                                            \
+    {                                                                                   \
+        .storage_partition_name = "nvs", .netif_queue_size = 10, .task_queue_size = 10, \
+    }
 #endif
 
 static const char *TAG = "uppatvind";
@@ -211,7 +229,7 @@ static esp_err_t app_attribute_update_cb(
         // Odrzuć żądanie jeśli trwa sekwencja klikania
         if (s_is_cycling) {
             ESP_LOGW(TAG, "Zajęty – ignoruję żądanie trybu %d", (int)requested);
-            return ESP_ERR_BUSY;
+            return ESP_ERR_INVALID_STATE; // ESP-IDF nie ma ESP_ERR_BUSY
         }
 
         ESP_LOGI(TAG, "Matter→FanMode: %d→%d", (int)g_current_mode, (int)requested);
