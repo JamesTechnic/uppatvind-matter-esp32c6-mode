@@ -1,12 +1,21 @@
 name: Build firmware
 
 # Buduje projekt dla ESP32-C6 na oficjalnym obrazie Espressif
-# (ESP-IDF v6.0.2 + esp-matter release/v1.6). Nie używa żadnych sekretów.
+# (ESP-IDF v5.5.5 + esp-matter release/v1.6). Nie używa żadnych sekretów.
+#
+# Odpala się TYLKO: dla pull requestów, po scaleniu do main oraz ręcznie
+# (Actions → Build firmware → Run workflow). Wcześniej odpalał się dwa razy
+# na każdy push (push + PR), co generowało lawinę maili o nieudanych buildach.
 on:
-  push:
-    branches: [main, fix/build-and-thread-start]
   pull_request:
+  push:
+    branches: [main]
   workflow_dispatch:
+
+# Nowy push do tego samego PR anuluje trwający build zamiast kolejkować kolejny.
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
