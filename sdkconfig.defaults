@@ -27,8 +27,22 @@ CONFIG_USE_BLE_ONLY_FOR_COMMISSIONING=n
 # libsodium (jak w przykładzie esp-matter)
 CONFIG_LIBSODIUM_USE_MBEDTLS_SHA=y
 
+# HKDF w mbedTLS – WYMAGANE przez Matter (CHIPCryptoPALmbedTLS). Bez tego
+# linkowanie kończy się: undefined reference to `mbedtls_hkdf'.
+CONFIG_MBEDTLS_HKDF_C=y
+
+# Tablica partycji leży pod 0xC000 (a nie domyślnym 0x8000), bo partitions.csv
+# (jak w examples/light) zaczyna się od esp_secure_cert pod 0xD000, a większy
+# bootloader potrzebuje miejsca.
+CONFIG_PARTITION_TABLE_OFFSET=0xC000
+
+# BLE: bez ponawiania połączeń (jak w przykładzie)
+CONFIG_BT_NIMBLE_ENABLE_CONN_REATTEMPT=n
+
 # ── Wi-Fi WYŁĄCZONE (Thread-only) ────────────────────────────────────────────
 CONFIG_ENABLE_WIFI_STATION=n
+CONFIG_ENABLE_WIFI_AP=n
+CONFIG_ESP_WIFI_SOFTAP_SUPPORT=n
 
 # ── Thread / OpenThread ───────────────────────────────────────────────────────
 CONFIG_OPENTHREAD_ENABLED=y
@@ -54,6 +68,8 @@ CONFIG_LWIP_IPV6=y
 CONFIG_LWIP_IPV6_AUTOCONFIG=n
 CONFIG_LWIP_IPV6_NUM_ADDRESSES=8
 CONFIG_LWIP_MULTICAST_PING=y
+CONFIG_LWIP_HOOK_IP6_ROUTE_DEFAULT=y
+CONFIG_LWIP_HOOK_ND6_GET_GW_DEFAULT=y
 
 # ── VFS / eventfd – wymagane przez OpenThread port ───────────────────────────
 CONFIG_VFS_SUPPORT_SELECT=y
@@ -69,6 +85,9 @@ CONFIG_ENABLE_TEST_SETUP_PARAMS=y
 # Komisjonowanie przez BLE (CHIP-over-BLE)
 CONFIG_ENABLE_CHIPOBLE=y
 
+# Aktualizacje OTA przez Matter (partycje ota_0/ota_1 są w partitions.csv)
+CONFIG_ENABLE_OTA_REQUESTOR=y
+
 # Konsola Matter przez USB – do debugowania i OT CLI (rejestrowana w app_main)
 CONFIG_ENABLE_CHIP_SHELL=y
 
@@ -77,8 +96,9 @@ CONFIG_CHIP_TASK_STACK_SIZE=8192
 CONFIG_OPENTHREAD_STACK_SIZE=8192
 
 # ── Logowanie ─────────────────────────────────────────────────────────────────
+# Bez LOG_MAXIMUM_LEVEL_DEBUG: wkompilowuje wszystkie logi debug i powiększa
+# firmware (partycja aplikacji ma tylko 1,9 MB).
 CONFIG_LOG_DEFAULT_LEVEL_INFO=y
-CONFIG_LOG_MAXIMUM_LEVEL_DEBUG=y
 
 # ── NVS ──────────────────────────────────────────────────────────────────────
 CONFIG_NVS_ENCRYPTION=n
